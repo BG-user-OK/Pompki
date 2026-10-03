@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Pompki</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icons/icon-192.png">
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="./styles.css?v=vGPT_1.0.0">
+  <script defer src="./core.js?v=vGPT_1.0.0"></script>
+  <script defer src="./sync.js?v=vGPT_1.0.0"></script>
+  <script defer src="./app.js?v=vGPT_1.0.0"></script>
+</head>
+<body>
+  <main id="screen">
+    <section id="home" class="screen">
+      <button id="start" class="start-button" aria-label="Rozpocznij trening pompek"><img src="./obrazki/pompki.png" alt="Pompki" draggable="false"></button>
+      <div class="home-tools"><button id="settings" class="quiet-button" aria-label="Ustawienia synchronizacji">⚙</button><span id="version">vGPT_1.0.0</span></div>
+      <p id="home-status" class="status" role="status"></p>
+    </section>
+    <section id="workout" class="screen" hidden aria-label="Trening pompek">
+      <output id="counter" class="counter" aria-label="Serie i powtórzenia">0</output>
+      <div id="choices" class="choices">
+        <button class="rep rep20" data-reps="20" aria-label="Zapisz serię: 20 powtórzeń">20</button>
+        <button class="rep rep25" data-reps="25" aria-label="Zapisz serię: 25 powtórzeń">25</button>
+        <button class="rep rep30" data-reps="30" aria-label="Zapisz serię: 30 powtórzeń">30</button>
+      </div>
+      <output id="rest" class="rest" hidden aria-label="Sekundy przerwy"></output>
+    </section>
+    <button id="black" class="black-screen" hidden aria-label="Pokaż licznik i przyciski kolejnej serii"></button>
+    <section id="result" class="screen result" hidden>
+      <output id="duration" class="duration" aria-label="Czas treningu"></output>
+      <output id="final-counter" class="counter" aria-label="Dokładny wynik treningu"></output>
+      <img id="result-image" class="result-image" alt="" draggable="false">
+      <p id="result-status" class="status" role="status"></p>
+      <div class="result-actions"><button id="sync-now" class="text-button">Synchronizuj</button><button id="new-workout" class="text-button">Nowy trening</button></div>
+    </section>
+  </main>
+  <dialog id="settings-dialog">
+    <form id="settings-form">
+      <h1>Synchronizacja</h1>
+      <label>Adres wdrożenia Apps Script<input id="endpoint" type="url" placeholder="https://script.google.com/…/exec" autocomplete="off" required></label>
+      <label>Klucz synchronizacji<input id="sync-key" type="password" autocomplete="off" minlength="32" required></label>
+      <p>Klucz służy tylko do tej synchronizacji. Nie wpisuj hasła Google. Klucz pozostaje w pamięci tej sesji i nie trafia do kodu aplikacji. Po ponownym otwarciu może być potrzebny ponownie.</p>
+      <p id="queue-status" class="status"></p>
+      <div class="dialog-actions"><button type="button" id="close-settings">Zamknij</button><button type="submit">Połącz</button></div>
+    </form>
+  </dialog>
+  <dialog id="recovery-dialog">
+    <h1>Trening w toku</h1><p>Możesz wrócić do przerwanego treningu. Czas nadal biegnie.</p>
+    <div class="dialog-actions"><button id="discard-workout">Zakończ bez zapisu</button><button id="resume-workout">Kontynuuj</button></div>
+  </dialog>
+  <dialog id="storage-dialog"><h1>Nie udało się zapisać danych</h1><p id="storage-error"></p><button id="storage-retry">Spróbuj ponownie</button></dialog>
+  <noscript>Włącz JavaScript, aby używać aplikacji Pompki.</noscript>
+</body>
+</html>

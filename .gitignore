@@ -1,0 +1,15 @@
+.private/
+.env*
+.clasp.json
+apps-script/
+SETUP.md
+AGENTS.md
+agents.md
+vGPT_*/
+exports/
+tests/
+tools/
+artifacts/
+node_modules/
+package*.json
+*.log
