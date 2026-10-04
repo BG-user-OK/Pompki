@@ -1,7 +1,7 @@
-/* Pompki vGPT_1.0.1 */
+/* Pompki vGPT_1.0.2 */
 (function () {
   'use strict';
-  const VERSION = 'vGPT_1.0.1', C = window.PompkiCore, Sync = window.PompkiSync;
+  const VERSION = 'vGPT_1.0.2', C = window.PompkiCore, Sync = window.PompkiSync;
   const $ = id => document.getElementById(id), KEY = 'pompki.state.v1';
   let data = { active: null, lastResult: null, queue: [], statuses: {} };
   let timer = null, audio = null, wakeLock = null, busy = false, storageRetry = null, waitingSW = null;

@@ -31,11 +31,11 @@
     <button id="install" type="button">Zainstaluj Pompki</button>
     <p id="install-status" role="status" aria-live="polite">Stuknij przycisk i pozostaw tę stronę otwartą przez około 30 sekund, aby Chrome mógł przygotować instalację.</p>
     <a href="./">Przejdź do Pompki</a>
-    <small>vGPT_1.0.1</small>
+    <small>vGPT_1.0.2</small>
     <noscript><p>Włącz JavaScript, aby użyć przycisku instalacji.</p></noscript>
   </main>
   <script>
-    /* Pompki vGPT_1.0.1 — separate installation flow; no workout or synchronization access. */
+    /* Pompki vGPT_1.0.2 — separate installation flow; no workout or synchronization access. */
     (function () {
       'use strict';
       const button = document.getElementById('install');
@@ -102,7 +102,7 @@
         status.textContent = 'Ta strona działa już w zainstalowanej aplikacji Pompki.';
       }
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('./sw.js?v=vGPT_1.0.1', { scope: './', updateViaCache: 'none' }).catch(() => {
+        navigator.serviceWorker.register('./sw.js?v=vGPT_1.0.2', { scope: './', updateViaCache: 'none' }).catch(() => {
           if (!accepted && !standalone && !deferredPrompt) status.textContent = 'Nie udało się przygotować aplikacji do pracy offline. Sprawdź połączenie i odśwież tę stronę.';
         });
       }
