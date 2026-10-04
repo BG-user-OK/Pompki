@@ -1,4 +1,4 @@
-/* Pompki vGPT_1.0.2 — pure workout rules, shared by UI and tests. */
+/* Pompki vGPT_1.0.3 — pure workout rules, shared by UI and tests. */
 (function (root) {
   'use strict';
   const exercise = Object.freeze({ id: 'pushups', sets: 4, choices: [20, 25, 30], restMs: 60000 });

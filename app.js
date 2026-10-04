@@ -1,10 +1,10 @@
-/* Pompki vGPT_1.0.2 */
+/* Pompki vGPT_1.0.3 */
 (function () {
   'use strict';
-  const VERSION = 'vGPT_1.0.2', C = window.PompkiCore, Sync = window.PompkiSync;
+  const VERSION = 'vGPT_1.0.3', C = window.PompkiCore, Sync = window.PompkiSync;
   const $ = id => document.getElementById(id), KEY = 'pompki.state.v1';
   let data = { active: null, lastResult: null, queue: [], statuses: {} };
-  let timer = null, audio = null, wakeLock = null, busy = false, storageRetry = null, waitingSW = null;
+  let timer = null, audio = null, wakeLock = null, busy = false, storageRetry = null, updates = null;
   let restAudioEnd = 0, lastRender = '', syncing = false, retryTimer = null, audioPromise = Promise.resolve();
   const messages = {
     saved: 'Zapisano w arkuszu.', duplicate: 'Zapisano w arkuszu.', superseded: 'Nowszy trening z tego dnia jest już zapisany.',
@@ -102,6 +102,7 @@
       commit();
     } else if (saveActive(next)) render();
     busy = false;
+    activateUpdate();
   }
   async function syncQueue() {
     if (syncing || !navigator.onLine || !Sync.isConfigured() || !data.queue.length || activeWorkout()) { updateStatuses(); return; }
@@ -120,10 +121,11 @@
       if (data.lastResult) $('result-status').textContent = error.message;
     } finally {
       syncing = false;
+      activateUpdate();
       if (data.queue.length && navigator.onLine && Sync.isConfigured()) retryTimer = setTimeout(syncQueue, 60000);
     }
   }
-  function activateUpdate() { if (waitingSW && !activeWorkout()) waitingSW.postMessage('ACTIVATE_UPDATE'); }
+  function activateUpdate() { updates?.apply(); }
   $('start').addEventListener('click', startWorkout);
   document.querySelectorAll('[data-reps]').forEach(button => button.addEventListener('click', () => recordSet(Number(button.dataset.reps))));
   $('black').addEventListener('click', () => {
@@ -134,7 +136,7 @@
   $('sync-now').addEventListener('click', () => { if (Sync.isConfigured()) syncQueue(); else $('settings').click(); });
   $('settings').addEventListener('click', () => { $('endpoint').value = Sync.endpoint(); $('sync-key').value = ''; updateStatuses(); $('settings-dialog').showModal(); });
   $('close-settings').addEventListener('click', () => { $('sync-key').value = ''; $('settings-dialog').close(); });
-  $('settings-dialog').addEventListener('close', () => { $('sync-key').value = ''; });
+  $('settings-dialog').addEventListener('close', () => { $('sync-key').value = ''; activateUpdate(); });
   $('settings-form').addEventListener('submit', async event => {
     event.preventDefault();
     try { await Sync.configure($('endpoint').value.trim(), $('sync-key').value); $('sync-key').value = ''; $('settings-dialog').close(); syncQueue(); }
@@ -143,7 +145,7 @@
   $('storage-retry').addEventListener('click', () => { if (storageRetry) storageRetry(); });
   $('storage-dialog').addEventListener('cancel', event => event.preventDefault());
   $('resume-workout').addEventListener('click', () => { audioPromise = unlockAudio(); $('recovery-dialog').close(); render(); requestWakeLock(); tick(); });
-  $('discard-workout').addEventListener('click', () => { if (saveActive(null)) { $('recovery-dialog').close(); render(); } });
+  $('discard-workout').addEventListener('click', () => { if (saveActive(null)) { $('recovery-dialog').close(); render(); activateUpdate(); } });
   $('recovery-dialog').addEventListener('cancel', event => event.preventDefault());
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { requestWakeLock(); tick(); syncQueue(); } });
   window.addEventListener('online', syncQueue);
@@ -162,13 +164,12 @@
   }
   render(); timer = setInterval(tick, 150);
   if (activeWorkout()) $('recovery-dialog').showModal();
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register(`./sw.js?v=${VERSION}`).then(registration => {
-      if (registration.waiting) { waitingSW = registration.waiting; activateUpdate(); }
-      registration.addEventListener('updatefound', () => {
-        const worker = registration.installing;
-        worker?.addEventListener('statechange', () => { if (worker.state === 'installed' && navigator.serviceWorker.controller) { waitingSW = worker; activateUpdate(); } });
-      });
-    }).catch(() => { if (!activeWorkout()) $('home-status').textContent = 'Tryb offline będzie dostępny po poprawnym załadowaniu aplikacji online.'; });
-  }
+  updates = window.PompkiUpdates.start({
+    // A reload must not interrupt a set, a storage retry, an in-flight request,
+    // or an unsent queue that still needs the session-only synchronization key.
+    canReload: () => !activeWorkout() && !busy && !syncing &&
+      !['settings-dialog', 'storage-dialog', 'recovery-dialog'].some(id => $(id).open) &&
+      !(data.queue.length && Sync.isConfigured()),
+    onError: () => { if (!activeWorkout()) $('home-status').textContent = 'Tryb offline będzie dostępny po poprawnym załadowaniu aplikacji online.'; }
+  });
 })();
