@@ -1,8 +1,8 @@
-/* Pompki vGPT_1.0.3 — never cache integration requests. */
+/* Pompki vGPT_1.0.4 — never cache integration requests. */
 'use strict';
-const VERSION = 'vGPT_1.0.3';
+const VERSION = 'vGPT_1.0.4';
 const CACHE = `pompki-${VERSION}`;
-const FILES = ['./', './index.html', './install.html', './styles.css?v=vGPT_1.0.3', './core.js?v=vGPT_1.0.3', './app.js?v=vGPT_1.0.3', './sync.js?v=vGPT_1.0.3', './updates.js?v=vGPT_1.0.3', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', './icons/maskable-512.png', './icons/apple-touch-icon.png', './obrazki/pompki.png', ...[100,110,120,130,140,150].map(n => `./obrazki/${n}_pompek.png`)];
+const FILES = ['./', './index.html', './install.html', './styles.css?v=vGPT_1.0.4', './core.js?v=vGPT_1.0.4', './app.js?v=vGPT_1.0.4', './sync.js?v=vGPT_1.0.4', './updates.js?v=vGPT_1.0.4', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', './icons/maskable-512.png', './icons/apple-touch-icon.png', './obrazki/pompki.png', ...[100,110,120,130,140,150].map(n => `./obrazki/${n}_pompek.png`)];
 // Activate only after the complete new offline bundle is available. This also
 // releases updates held by older clients; the current page decides when to reload.
 self.addEventListener('install', event => event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(FILES.map(url => new Request(url, { cache: 'reload' })))).then(() => self.skipWaiting())));

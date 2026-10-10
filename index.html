@@ -10,17 +10,17 @@
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icons/icon-192.png">
   <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
-  <link rel="stylesheet" href="./styles.css?v=vGPT_1.0.3">
-  <script defer src="./core.js?v=vGPT_1.0.3"></script>
-  <script defer src="./sync.js?v=vGPT_1.0.3"></script>
-  <script defer src="./updates.js?v=vGPT_1.0.3"></script>
-  <script defer src="./app.js?v=vGPT_1.0.3"></script>
+  <link rel="stylesheet" href="./styles.css?v=vGPT_1.0.4">
+  <script defer src="./core.js?v=vGPT_1.0.4"></script>
+  <script defer src="./sync.js?v=vGPT_1.0.4"></script>
+  <script defer src="./updates.js?v=vGPT_1.0.4"></script>
+  <script defer src="./app.js?v=vGPT_1.0.4"></script>
 </head>
 <body>
   <main id="screen">
     <section id="home" class="screen">
       <button id="start" class="start-button" aria-label="Rozpocznij trening pompek"><img src="./obrazki/pompki.png" alt="Pompki" draggable="false"></button>
-      <div class="home-tools"><button id="settings" class="quiet-button" aria-label="Ustawienia synchronizacji">⚙</button><span id="version">vGPT_1.0.3</span></div>
+      <div class="home-tools"><button id="settings" class="quiet-button" aria-label="Ustawienia synchronizacji">⚙</button><span id="version">vGPT_1.0.4</span></div>
       <p id="home-status" class="status" role="status"></p>
     </section>
     <section id="workout" class="screen" hidden aria-label="Trening pompek">
@@ -30,9 +30,15 @@
         <button class="rep rep25" data-reps="25" aria-label="Zapisz serię: 25 powtórzeń">25</button>
         <button class="rep rep30" data-reps="30" aria-label="Zapisz serię: 30 powtórzeń">30</button>
       </div>
-      <output id="rest" class="rest" hidden aria-label="Sekundy przerwy"></output>
+      <div id="rest" class="rest" hidden>
+        <output id="rest-value" class="sr-only" aria-label="Sekundy przerwy"></output>
+        <div id="rest-roller" class="rest-roller" aria-hidden="true"><div id="rest-tape" class="rest-tape"></div></div>
+      </div>
     </section>
     <button id="black" class="black-screen" hidden aria-label="Pokaż licznik i przyciski kolejnej serii"></button>
+    <section id="processing" class="screen sync-working" hidden role="status" aria-live="polite" aria-busy="true">
+      <p>Zapisywanie treningu…</p><div class="sync-spinner" aria-hidden="true"></div>
+    </section>
     <section id="result" class="screen result" hidden>
       <output id="duration" class="duration" aria-label="Czas treningu"></output>
       <output id="final-counter" class="counter" aria-label="Dokładny wynik treningu"></output>
