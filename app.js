@@ -1,11 +1,12 @@
-/* Pompki vGPT_1.0.8 */
+/* Pompki vGPT_1.0.9 */
 (function () {
   'use strict';
-  const VERSION = 'vGPT_1.0.8', C = window.PompkiCore, Sync = window.PompkiSync;
+  const VERSION = 'vGPT_1.0.9', C = window.PompkiCore, Sync = window.PompkiSync;
   const $ = id => document.getElementById(id), KEY = 'pompki.state.v1';
   let data = { active: null, lastResult: null, queue: [], statuses: {} };
   let timer = null, audio = null, wakeLock = null, busy = false, storageRetry = null, updates = null;
-  let restAudioEnd = 0, lastRender = '', syncing = false, retryTimer = null, audioPromise = Promise.resolve();
+  let lastRender = '', syncing = false, retryTimer = null, audioPromise = Promise.resolve();
+  const alarmSources = new Set();
   let processing = false, syncAttempt = null, syncError = null, tapePosition = null;
   let roundSound = null, roundSoundLoad = null;
   const reelStates = {}, ROUND_SOUND_URLS = ['./audio/runda_x.wav', './audio/runda_x-end.wav'];
@@ -48,12 +49,16 @@
   function beeps(count) {
     if (!audio || audio.state !== 'running') return 0;
     const start = audio.currentTime + 0.025;
-    for (let i = 0; i < count; i++) {
-      const at = start + i * 0.48, oscillator = audio.createOscillator(), gain = audio.createGain();
-      oscillator.type = 'square'; oscillator.frequency.value = 880;
-      gain.gain.setValueAtTime(0, at); gain.gain.linearRampToValueAtTime(0.24, at + 0.012); gain.gain.setValueAtTime(0.24, at + 0.24); gain.gain.linearRampToValueAtTime(0, at + 0.27);
-      oscillator.connect(gain); gain.connect(audio.destination); oscillator.start(at); oscillator.stop(at + 0.28);
-    }
+    const sources = [];
+    try {
+      for (let i = 0; i < count; i++) {
+        const at = start + i * 0.48, oscillator = audio.createOscillator(), gain = audio.createGain();
+        oscillator.type = 'square'; oscillator.frequency.value = 880;
+        gain.gain.setValueAtTime(0, at); gain.gain.linearRampToValueAtTime(0.24, at + 0.012); gain.gain.setValueAtTime(0.24, at + 0.24); gain.gain.linearRampToValueAtTime(0, at + 0.27);
+        sources.push(oscillator); oscillator.connect(gain); gain.connect(audio.destination);
+        trackAlarmSource(oscillator, gain); oscillator.start(at); oscillator.stop(at + 0.28);
+      }
+    } catch (error) { cancelAlarmSources(sources); throw error; }
     return 1750 - (4 - count) * 480;
   }
   function prepareRoundSound() {
@@ -86,16 +91,30 @@
         for (let i = 0; i < count; i++) {
           const source = audio.createBufferSource(); sources.push(source);
           source.buffer = roundSound[i === count - 1 ? 1 : 0];
-          source.connect(audio.destination); source.start(at);
+          source.connect(audio.destination); trackAlarmSource(source); source.start(at);
           at += source.buffer.duration + (i === count - 1 ? 0 : 0.2);
         }
         return Math.ceil((at - audio.currentTime) * 1000) + 5;
       } catch {
-        for (const source of sources) { try { source.stop(); source.disconnect(); } catch {} }
+        cancelAlarmSources(sources);
         roundSound = null;
       }
     }
     try { return beeps(count); } catch { return 0; }
+  }
+  function trackAlarmSource(source, output) {
+    alarmSources.add(source);
+    source.onended = () => {
+      alarmSources.delete(source);
+      try { source.disconnect(); output?.disconnect(); } catch {}
+      activateUpdate();
+    };
+  }
+  function cancelAlarmSources(sources) {
+    for (const source of sources) {
+      alarmSources.delete(source); source.onended = null;
+      try { source.stop(); source.disconnect(); } catch {}
+    }
   }
   function statusText(id) { return messages[data.statuses[id]] || messages.pending; }
   function updateStatuses() {
@@ -195,7 +214,7 @@
     if (!r.expired) { renderRest(r.seconds, immediate); return; }
     // The black state is committed before audio. Reloading never plays a second alarm.
     if (saveActive({ ...data.active, phase: 'black' })) {
-      render(); restAudioEnd = Date.now() + roundAlarm(data.active.sets.length + 1);
+      render(); roundAlarm(data.active.sets.length + 1);
     }
   }
   function startWorkout() {
@@ -270,7 +289,7 @@
   $('start').addEventListener('click', startWorkout);
   document.querySelectorAll('[data-reps]').forEach(button => button.addEventListener('click', () => recordSet(Number(button.dataset.reps))));
   $('black').addEventListener('click', () => {
-    if (data.active?.phase !== 'black' || Date.now() < restAudioEnd || busy) return;
+    if (data.active?.phase !== 'black' || busy) return;
     audioPromise = unlockAudio(); if (saveActive({ ...data.active, phase: 'ready' })) { render(); requestWakeLock(); }
   });
   $('new-workout').addEventListener('click', () => { if (saveActive(null)) { render(); activateUpdate(); } });
@@ -308,9 +327,9 @@
   render(); timer = setInterval(tick, 150);
   if (activeWorkout()) $('recovery-dialog').showModal();
   updates = window.PompkiUpdates.start({
-    // A reload must not interrupt a set, a storage retry, an in-flight request,
+    // A reload must not interrupt a set, alarm audio, a storage retry, an in-flight request,
     // or an unsent queue that still needs the session-only synchronization key.
-    canReload: () => !activeWorkout() && !busy && !syncing &&
+    canReload: () => !activeWorkout() && !busy && !syncing && !alarmSources.size &&
       !['settings-dialog', 'storage-dialog', 'recovery-dialog'].some(id => $(id).open) &&
       !(data.queue.length && Sync.isConfigured()),
     onError: () => { if (!activeWorkout()) $('home-status').textContent = 'Tryb offline będzie dostępny po poprawnym załadowaniu aplikacji online.'; }
