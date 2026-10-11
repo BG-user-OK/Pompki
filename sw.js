@@ -1,8 +1,8 @@
-/* Pompki vGPT_1.0.4 — never cache integration requests. */
+/* Pompki vGPT_1.0.5 — never cache integration requests. */
 'use strict';
-const VERSION = 'vGPT_1.0.4';
+const VERSION = 'vGPT_1.0.5';
 const CACHE = `pompki-${VERSION}`;
-const FILES = ['./', './index.html', './install.html', './styles.css?v=vGPT_1.0.4', './core.js?v=vGPT_1.0.4', './app.js?v=vGPT_1.0.4', './sync.js?v=vGPT_1.0.4', './updates.js?v=vGPT_1.0.4', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', './icons/maskable-512.png', './icons/apple-touch-icon.png', './obrazki/pompki.png', ...[100,110,120,130,140,150].map(n => `./obrazki/${n}_pompek.png`)];
+const FILES = ['./', './index.html', './install.html', './styles.css?v=vGPT_1.0.5', './core.js?v=vGPT_1.0.5', './app.js?v=vGPT_1.0.5', './sync.js?v=vGPT_1.0.5', './updates.js?v=vGPT_1.0.5', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', './icons/maskable-512.png', './icons/apple-touch-icon.png', './obrazki/pompki.png', ...[100,110,120,130,140,150].map(n => `./obrazki/${n}_pompek.png`)];
 // Activate only after the complete new offline bundle is available. This also
 // releases updates held by older clients; the current page decides when to reload.
 self.addEventListener('install', event => event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(FILES.map(url => new Request(url, { cache: 'reload' })))).then(() => self.skipWaiting())));
@@ -12,6 +12,18 @@ self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
   if (event.request.method !== 'GET' || url.origin !== self.location.origin || !url.pathname.startsWith(new URL(self.registration.scope).pathname)) return;
   event.respondWith(caches.open(CACHE).then(async cache => {
+    // Optional recording: never require it for installation, and never cache a 404.
+    // Network-first discovers a file published later; a successful cached copy works offline.
+    if (url.href === new URL('./audio/runda_x.mp3', self.registration.scope).href) {
+      const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 2500);
+      try {
+        const fresh = await fetch(event.request, { cache: 'no-cache', signal: controller.signal });
+        if (fresh.ok) { try { await cache.put(event.request, fresh.clone()); } catch {} return fresh; }
+        return await cache.match(event.request) || fresh;
+      } catch (error) {
+        const cached = await cache.match(event.request); if (cached) return cached; throw error;
+      } finally { clearTimeout(timeout); }
+    }
     if (event.request.mode === 'navigate' || url.pathname.endsWith('/manifest.webmanifest')) {
       const installer = url.pathname === new URL('./install.html', self.registration.scope).pathname;
       const key = event.request.mode === 'navigate' ? (installer ? './install.html' : './index.html') : './manifest.webmanifest';

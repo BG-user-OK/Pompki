@@ -1,12 +1,14 @@
-/* Pompki vGPT_1.0.4 */
+/* Pompki vGPT_1.0.5 */
 (function () {
   'use strict';
-  const VERSION = 'vGPT_1.0.4', C = window.PompkiCore, Sync = window.PompkiSync;
+  const VERSION = 'vGPT_1.0.5', C = window.PompkiCore, Sync = window.PompkiSync;
   const $ = id => document.getElementById(id), KEY = 'pompki.state.v1';
   let data = { active: null, lastResult: null, queue: [], statuses: {} };
   let timer = null, audio = null, wakeLock = null, busy = false, storageRetry = null, updates = null;
   let restAudioEnd = 0, lastRender = '', syncing = false, retryTimer = null, audioPromise = Promise.resolve();
   let processing = false, syncAttempt = null, syncError = null, tapePosition = null;
+  let roundSound = null, roundSoundLoad = null;
+  const reelStates = {}, ROUND_SOUND_URL = './audio/runda_x.mp3';
   const messages = {
     saved: 'Zapisano w arkuszu.', duplicate: 'Zapisano w arkuszu.', superseded: 'Nowszy trening z tego dnia jest już zapisany.',
     ambiguous: 'Wynik zapisany lokalnie. Nie można jednoznacznie wskazać dnia w arkuszu.',
@@ -35,6 +37,7 @@
       if (audio.state !== 'running') await audio.resume();
       const buffer = audio.createBuffer(1, 1, audio.sampleRate), source = audio.createBufferSource();
       source.buffer = buffer; source.connect(audio.destination); source.start();
+      prepareRoundSound();
     } catch { /* Time and workout state remain functional without audio. */ }
   }
   async function requestWakeLock() {
@@ -53,6 +56,43 @@
     }
     return 1750 - (4 - count) * 480;
   }
+  function prepareRoundSound() {
+    if (!audio || roundSound || roundSoundLoad) return roundSoundLoad;
+    const context = audio, controller = new AbortController();
+    roundSoundLoad = (async () => {
+      let timeout;
+      try {
+        const deadline = new Promise((_, reject) => { timeout = setTimeout(() => { controller.abort(); reject(new Error('Optional audio timeout')); }, 3000); });
+        const load = (async () => {
+          const response = await fetch(ROUND_SOUND_URL, { cache: 'no-cache', signal: controller.signal });
+          if (!response.ok) throw new Error('Optional audio unavailable');
+          const buffer = await context.decodeAudioData(await response.arrayBuffer());
+          if (!Number.isFinite(buffer.duration) || buffer.duration <= 0) throw new Error('Invalid audio duration');
+          return buffer;
+        })();
+        roundSound = await Promise.race([load, deadline]);
+      } catch { /* Missing/corrupt/blocked recordings keep the synthesized alarm available. */ }
+      finally { clearTimeout(timeout); roundSoundLoad = null; }
+    })();
+    return roundSoundLoad;
+  }
+  function roundAlarm(count) {
+    const sources = [];
+    if (roundSound && audio?.state === 'running') {
+      try {
+        const start = audio.currentTime + 0.025, duration = roundSound.duration;
+        for (let i = 0; i < count; i++) {
+          const source = audio.createBufferSource(); sources.push(source);
+          source.buffer = roundSound; source.connect(audio.destination); source.start(start + i * (duration + 0.2));
+        }
+        return Math.ceil((0.025 + count * duration + (count - 1) * 0.2) * 1000) + 5;
+      } catch {
+        for (const source of sources) { try { source.stop(); source.disconnect(); } catch {} }
+        roundSound = null;
+      }
+    }
+    try { return beeps(count); } catch { return 0; }
+  }
   function statusText(id) { return messages[data.statuses[id]] || messages.pending; }
   function updateStatuses() {
     const count = data.queue.length;
@@ -62,27 +102,48 @@
   }
   function renderRest(seconds, immediate = false) {
     $('rest-value').textContent = seconds;
-    const roller = $('rest-roller'), inner = $('rest-tape');
-    if (!inner.childElementCount) {
-      const rows = document.createDocumentFragment();
-      for (let value = 1; value <= 60; value++) {
-        const row = document.createElement('div'); row.className = 'rest-digit'; row.textContent = value; rows.append(row);
-      }
-      inner.append(rows);
-    }
+    const roller = $('rest-roller');
     const h = roller.clientHeight, w = roller.clientWidth;
     if (!h || !w) return;
     const key = `${data.active.id}:${data.active.sets.length}`, digitH = Math.round(Math.min(h * 0.6, w * 0.9));
     const resized = !tapePosition || tapePosition.h !== h || tapePosition.w !== w;
-    if (resized) {
-      for (const row of inner.children) { row.style.height = `${digitH}px`; row.style.fontSize = `${Math.floor(Math.min(digitH * 0.95, w * 0.64))}px`; }
-    }
+    if (resized) roller.style.fontSize = `${Math.floor(Math.min(digitH * 0.95, w * 0.64))}px`;
     if (!immediate && !resized && tapePosition.key === key && tapePosition.seconds === seconds) return;
-    // The tape is presentation only: resume/resize jumps directly to the stored deadline's current second.
-    const snap = immediate || resized || tapePosition.key !== key || seconds !== tapePosition.seconds + 1;
-    inner.style.transition = snap ? 'none' : 'transform 0.6s ease';
-    inner.style.transform = `translateY(${h / 2 - digitH / 2 - (seconds - 1) * digitH}px)`;
-    if (snap) inner.getBoundingClientRect();
+    const snap = immediate || resized || tapePosition.key !== key || seconds !== tapePosition.seconds + 1 || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    $('rest-tens').hidden = seconds < 10;
+    function positionReel(id, value) {
+      const inner = $(id), previous = reelStates[id];
+      if (!snap && previous?.value === value) return; // Unchanged tens never receive a new transition.
+      inner.ontransitionend = null;
+      const transform = position => `translateY(${h / 2 - digitH / 2 - position * digitH}px)`;
+      if (!inner.childElementCount) {
+        const rows = document.createDocumentFragment(), ones = id === 'rest-ones-tape', last = ones ? 12 : 6;
+        for (let digit = 0; digit <= last; digit++) {
+          const row = document.createElement('div'); row.className = 'rest-digit';
+          row.textContent = ones ? (digit + 9) % 10 : digit === 0 ? '' : digit; rows.append(row);
+        }
+        inner.append(rows);
+      }
+      if (resized) for (const row of inner.children) row.style.height = `${digitH}px`;
+      // A repeated zero lets 9 -> 0 move upward; reset to the first zero without visible motion.
+      const ones = id === 'rest-ones-tape';
+      if (!snap && previous?.position === 11) {
+        inner.style.transition = 'none'; inner.style.transform = transform(1); inner.getBoundingClientRect();
+      }
+      const wrap = !snap && previous?.value === 9 && value === 0;
+      const current = { value, position: wrap ? 11 : value + (ones ? 1 : 0) }; reelStates[id] = current;
+      inner.style.transition = snap ? 'none' : 'transform 0.6s ease';
+      inner.style.transform = transform(current.position);
+      if (snap) inner.getBoundingClientRect();
+      if (wrap) inner.ontransitionend = event => {
+        if (event.propertyName !== 'transform' || reelStates[id] !== current) return;
+        inner.style.transition = 'none'; inner.style.transform = transform(1); inner.getBoundingClientRect();
+        current.position = 1; inner.ontransitionend = null;
+      };
+    }
+    // Deadlines, not animation events, determine the digits; resume/resize snaps directly to now.
+    positionReel('rest-tens-tape', Math.floor(seconds / 10));
+    positionReel('rest-ones-tape', seconds % 10);
     tapePosition = { key, seconds, h, w };
   }
   function render() {
@@ -107,7 +168,7 @@
     if (!r.expired) { renderRest(r.seconds, immediate); return; }
     // The black state is committed before audio. Reloading never plays a second alarm.
     if (saveActive({ ...data.active, phase: 'black' })) {
-      render(); restAudioEnd = Date.now() + beeps(data.active.sets.length + 1);
+      render(); restAudioEnd = Date.now() + roundAlarm(data.active.sets.length + 1);
     }
   }
   function startWorkout() {
@@ -203,6 +264,7 @@
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { requestWakeLock(); tick(true); syncQueue(); } });
   window.addEventListener('resize', () => { if (data.active?.phase === 'rest') renderRest(C.rest(data.active, Date.now()).seconds, true); });
   window.addEventListener('online', syncQueue);
+  window.addEventListener('online', prepareRoundSound);
   window.addEventListener('pagehide', releaseWakeLock);
   // Cross-tab changes are applied before the next input to avoid stale state.
   window.addEventListener('storage', event => { if (event.key === KEY && event.newValue) { try { data = JSON.parse(event.newValue); render(); } catch {} } });
