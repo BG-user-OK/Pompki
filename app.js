@@ -1,14 +1,14 @@
-/* Pompki vGPT_1.0.5 */
+/* Pompki vGPT_1.0.6 */
 (function () {
   'use strict';
-  const VERSION = 'vGPT_1.0.5', C = window.PompkiCore, Sync = window.PompkiSync;
+  const VERSION = 'vGPT_1.0.6', C = window.PompkiCore, Sync = window.PompkiSync;
   const $ = id => document.getElementById(id), KEY = 'pompki.state.v1';
   let data = { active: null, lastResult: null, queue: [], statuses: {} };
   let timer = null, audio = null, wakeLock = null, busy = false, storageRetry = null, updates = null;
   let restAudioEnd = 0, lastRender = '', syncing = false, retryTimer = null, audioPromise = Promise.resolve();
   let processing = false, syncAttempt = null, syncError = null, tapePosition = null;
   let roundSound = null, roundSoundLoad = null;
-  const reelStates = {}, ROUND_SOUND_URL = './audio/runda_x.mp3';
+  const reelStates = {}, ROUND_SOUND_URLS = ['./audio/runda_x.wav', './audio/runda_x-end.wav'];
   const messages = {
     saved: 'Zapisano w arkuszu.', duplicate: 'Zapisano w arkuszu.', superseded: 'Nowszy trening z tego dnia jest już zapisany.',
     ambiguous: 'Wynik zapisany lokalnie. Nie można jednoznacznie wskazać dnia w arkuszu.',
@@ -64,11 +64,13 @@
       try {
         const deadline = new Promise((_, reject) => { timeout = setTimeout(() => { controller.abort(); reject(new Error('Optional audio timeout')); }, 3000); });
         const load = (async () => {
-          const response = await fetch(ROUND_SOUND_URL, { cache: 'no-cache', signal: controller.signal });
-          if (!response.ok) throw new Error('Optional audio unavailable');
-          const buffer = await context.decodeAudioData(await response.arrayBuffer());
-          if (!Number.isFinite(buffer.duration) || buffer.duration <= 0) throw new Error('Invalid audio duration');
-          return buffer;
+          return Promise.all(ROUND_SOUND_URLS.map(async url => {
+            const response = await fetch(url, { cache: 'no-cache', signal: controller.signal });
+            if (!response.ok) throw new Error('Optional audio unavailable');
+            const buffer = await context.decodeAudioData(await response.arrayBuffer());
+            if (!Number.isFinite(buffer.duration) || buffer.duration <= 0) throw new Error('Invalid audio duration');
+            return buffer;
+          }));
         })();
         roundSound = await Promise.race([load, deadline]);
       } catch { /* Missing/corrupt/blocked recordings keep the synthesized alarm available. */ }
@@ -80,12 +82,14 @@
     const sources = [];
     if (roundSound && audio?.state === 'running') {
       try {
-        const start = audio.currentTime + 0.025, duration = roundSound.duration;
+        let at = audio.currentTime + 0.025;
         for (let i = 0; i < count; i++) {
           const source = audio.createBufferSource(); sources.push(source);
-          source.buffer = roundSound; source.connect(audio.destination); source.start(start + i * (duration + 0.2));
+          source.buffer = roundSound[i === count - 1 ? 1 : 0];
+          source.connect(audio.destination); source.start(at);
+          at += source.buffer.duration + (i === count - 1 ? 0 : 0.2);
         }
-        return Math.ceil((0.025 + count * duration + (count - 1) * 0.2) * 1000) + 5;
+        return Math.ceil((at - audio.currentTime) * 1000) + 5;
       } catch {
         for (const source of sources) { try { source.stop(); source.disconnect(); } catch {} }
         roundSound = null;
