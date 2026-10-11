@@ -1,7 +1,7 @@
-/* Pompki vGPT_1.0.7 */
+/* Pompki vGPT_1.0.8 */
 (function () {
   'use strict';
-  const VERSION = 'vGPT_1.0.7', C = window.PompkiCore, Sync = window.PompkiSync;
+  const VERSION = 'vGPT_1.0.8', C = window.PompkiCore, Sync = window.PompkiSync;
   const $ = id => document.getElementById(id), KEY = 'pompki.state.v1';
   let data = { active: null, lastResult: null, queue: [], statuses: {} };
   let timer = null, audio = null, wakeLock = null, busy = false, storageRetry = null, updates = null;
@@ -106,19 +106,37 @@
   }
   function renderRest(seconds, immediate = false) {
     $('rest-value').textContent = seconds;
+    const timing = C.rest(data.active, Date.now()), intro = C.restIntro;
+    const entryEnd = intro.blackMs + intro.entryMs, ascentStart = entryEnd + intro.previewMs;
+    const stage = !timing.intro ? 'count' : timing.introElapsed < intro.blackMs ? 'black' : timing.introElapsed < entryEnd ? 'entry' : timing.introElapsed < ascentStart ? 'preview' : 'ascent';
+    $('workout').classList.toggle('rest-intro', timing.intro);
+    $('workout').classList.toggle('rest-intro-black', stage === 'black');
+    $('workout').classList.toggle('rest-first-digit', data.active.restCountStartedAt != null && seconds === 1);
     const roller = $('rest-roller');
     const h = roller.clientHeight, w = roller.clientWidth;
     if (!h || !w) return;
     const key = `${data.active.id}:${data.active.sets.length}`, digitH = Math.round(Math.min(h * 0.6, w * 0.9));
     const resized = !tapePosition || tapePosition.h !== h || tapePosition.w !== w;
     if (resized) roller.style.fontSize = `${Math.floor(Math.min(digitH * 0.95, w * 0.64))}px`;
-    if (!immediate && !resized && tapePosition.key === key && tapePosition.seconds === seconds) return;
-    const snap = immediate || resized || tapePosition.key !== key || seconds !== tapePosition.seconds + 1 || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!timing.intro && !immediate && !resized && tapePosition.key === key && tapePosition.seconds === seconds && tapePosition.stage === stage) return;
+    const snap = immediate || resized || tapePosition.key !== key || (!timing.intro && !tapePosition.intro && seconds !== tapePosition.seconds + 1) || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     function positionReel(id, value) {
       const inner = $(id), previous = reelStates[id], ones = id === 'rest-ones-tape';
       // Reserve both columns. During 1-8 the blank tens row holds its future 1 below the viewport;
       // at 9 it slides into the lower preview, then reaches the centre naturally at 10.
-      const position = ones ? value + 1 : seconds < 9 ? -1 : value;
+      let position = ones ? value + 1 : seconds < 9 ? -1 : value, from = position, transition = 'transform 0.6s ease';
+      if (ones && timing.intro) {
+        if (stage === 'black') position = from = 0;
+        else if (stage === 'entry') {
+          from = (timing.introElapsed - intro.blackMs) / intro.entryMs; position = 1;
+          transition = `transform ${(entryEnd - timing.introElapsed) / 1000}s linear`;
+        } else if (stage === 'preview') position = from = 1;
+        else {
+          from = 1 + (timing.introElapsed - ascentStart) / intro.ascentMs; position = 2;
+          transition = `transform ${(C.exercise.restIntroMs - timing.introElapsed) / 1000}s linear`;
+        }
+        if (snap) position = from;
+      }
       if (!snap && previous?.value === value && previous.position === position) return;
       inner.ontransitionend = null;
       const transform = position => `translateY(${h / 2 - digitH / 2 - position * digitH}px)`;
@@ -131,13 +149,16 @@
         inner.append(rows);
       }
       if (resized) for (const row of inner.children) row.style.height = `${digitH}px`;
+      if (ones && timing.intro && !snap && from !== position) {
+        inner.style.transition = 'none'; inner.style.transform = transform(from); inner.getBoundingClientRect();
+      }
       // A repeated zero lets 9 -> 0 move upward; reset to the first zero without visible motion.
       if (!snap && previous?.position === 11) {
         inner.style.transition = 'none'; inner.style.transform = transform(1); inner.getBoundingClientRect();
       }
       const wrap = !snap && previous?.value === 9 && value === 0;
       const current = { value, position: wrap ? 11 : position }; reelStates[id] = current;
-      inner.style.transition = snap ? 'none' : 'transform 0.6s ease';
+      inner.style.transition = snap ? 'none' : transition;
       inner.style.transform = transform(current.position);
       if (snap) inner.getBoundingClientRect();
       if (wrap) inner.ontransitionend = event => {
@@ -149,7 +170,7 @@
     // Deadlines, not animation events, determine the digits; resume/resize snaps directly to now.
     positionReel('rest-tens-tape', Math.floor(seconds / 10));
     positionReel('rest-ones-tape', seconds % 10);
-    tapePosition = { key, seconds, h, w };
+    tapePosition = { key, seconds, h, w, intro: timing.intro, stage };
   }
   function render() {
     if (processing) { show('processing'); return; }
@@ -165,6 +186,7 @@
     if (state.phase === 'black') { show('black'); return; }
     show('workout'); $('counter').textContent = C.counter(state);
     const resting = state.phase === 'rest'; $('choices').hidden = resting; $('rest').hidden = !resting;
+    if (!resting) $('workout').classList.remove('rest-intro', 'rest-intro-black', 'rest-first-digit');
     if (resting) renderRest(C.rest(state, Date.now()).seconds, true);
   }
   function tick(immediate = false) {

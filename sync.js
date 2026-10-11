@@ -1,4 +1,4 @@
-/* Pompki vGPT_1.0.7 — authenticated writes + explicit receipts, never infer success from no-cors. */
+/* Pompki vGPT_1.0.8 — authenticated writes + explicit receipts, never infer success from no-cors. */
 (function () {
   'use strict';
   let signingKey = null;
