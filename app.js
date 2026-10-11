@@ -1,7 +1,7 @@
-/* Pompki vGPT_1.0.6 */
+/* Pompki vGPT_1.0.7 */
 (function () {
   'use strict';
-  const VERSION = 'vGPT_1.0.6', C = window.PompkiCore, Sync = window.PompkiSync;
+  const VERSION = 'vGPT_1.0.7', C = window.PompkiCore, Sync = window.PompkiSync;
   const $ = id => document.getElementById(id), KEY = 'pompki.state.v1';
   let data = { active: null, lastResult: null, queue: [], statuses: {} };
   let timer = null, audio = null, wakeLock = null, busy = false, storageRetry = null, updates = null;
@@ -114,10 +114,12 @@
     if (resized) roller.style.fontSize = `${Math.floor(Math.min(digitH * 0.95, w * 0.64))}px`;
     if (!immediate && !resized && tapePosition.key === key && tapePosition.seconds === seconds) return;
     const snap = immediate || resized || tapePosition.key !== key || seconds !== tapePosition.seconds + 1 || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    $('rest-tens').hidden = seconds < 10;
     function positionReel(id, value) {
-      const inner = $(id), previous = reelStates[id];
-      if (!snap && previous?.value === value) return; // Unchanged tens never receive a new transition.
+      const inner = $(id), previous = reelStates[id], ones = id === 'rest-ones-tape';
+      // Reserve both columns. During 1-8 the blank tens row holds its future 1 below the viewport;
+      // at 9 it slides into the lower preview, then reaches the centre naturally at 10.
+      const position = ones ? value + 1 : seconds < 9 ? -1 : value;
+      if (!snap && previous?.value === value && previous.position === position) return;
       inner.ontransitionend = null;
       const transform = position => `translateY(${h / 2 - digitH / 2 - position * digitH}px)`;
       if (!inner.childElementCount) {
@@ -130,12 +132,11 @@
       }
       if (resized) for (const row of inner.children) row.style.height = `${digitH}px`;
       // A repeated zero lets 9 -> 0 move upward; reset to the first zero without visible motion.
-      const ones = id === 'rest-ones-tape';
       if (!snap && previous?.position === 11) {
         inner.style.transition = 'none'; inner.style.transform = transform(1); inner.getBoundingClientRect();
       }
       const wrap = !snap && previous?.value === 9 && value === 0;
-      const current = { value, position: wrap ? 11 : value + (ones ? 1 : 0) }; reelStates[id] = current;
+      const current = { value, position: wrap ? 11 : position }; reelStates[id] = current;
       inner.style.transition = snap ? 'none' : 'transform 0.6s ease';
       inner.style.transform = transform(current.position);
       if (snap) inner.getBoundingClientRect();
