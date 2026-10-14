@@ -1,14 +1,14 @@
-/* Pompki vGPT_1.0.10 */
+/* Pompki vGPT_1.0.11 */
 (function () {
   'use strict';
-  const VERSION = 'vGPT_1.0.10', C = window.PompkiCore, Sync = window.PompkiSync;
+  const VERSION = 'vGPT_1.0.11', C = window.PompkiCore, Sync = window.PompkiSync;
   const $ = id => document.getElementById(id), KEY = 'pompki.state.v1';
   let data = { active: null, lastResult: null, queue: [], statuses: {} };
   let timer = null, audio = null, wakeLock = null, busy = false, storageRetry = null, updates = null;
   let lastRender = '', syncing = false, retryTimer = null, audioPromise = Promise.resolve();
   const alarmSources = new Set();
   let processing = false, syncAttempt = null, syncError = null, tapePosition = null;
-  let restFrame = null;
+  let restFrame = null, restColorOffset = 0;
   let roundSound = null, roundSoundLoad = null;
   const reelStates = {}, ROUND_SOUND_URLS = ['./audio/runda_x.wav', './audio/runda_x-end.wav'];
   const messages = {
@@ -139,7 +139,17 @@
     if (!h || !w) return;
     const key = `${data.active.id}:${data.active.sets.length}`, digitH = Math.round(Math.min(h * 0.6, w * 0.9));
     const resized = !tapePosition || tapePosition.h !== h || tapePosition.w !== w;
-    if (resized) roller.style.fontSize = `${Math.floor(Math.min(digitH * 0.95, w * 0.64))}px`;
+    if (resized) {
+      roller.style.fontSize = `${Math.floor(Math.min(digitH * 0.95, w * 0.64))}px`;
+      const font = getComputedStyle(roller), context = document.createElement('canvas').getContext('2d');
+      context.font = `900 ${font.fontSize} ${font.fontFamily}`;
+      const metrics = context.measureText('0123456789');
+      // Centred line boxes share this baseline. Put the common color boundary just below the ink,
+      // including the deepest digit, so a stationary tens digit is entirely vivid green.
+      const baseline = (metrics.fontBoundingBoxAscent - metrics.fontBoundingBoxDescent) / 2;
+      const inkBottom = baseline + metrics.actualBoundingBoxDescent;
+      restColorOffset = Math.min(digitH / 2, (Number.isFinite(inkBottom) ? inkBottom : parseFloat(font.fontSize) * 0.4) + 2) / digitH;
+    }
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const elapsed = Math.max(0, now - timing.countStartedAt) / 1000;
     const fraction = reduced ? 0 : elapsed - Math.floor(elapsed);
@@ -172,8 +182,8 @@
       inner.style.transform = `translateY(${h / 2 - digitH / 2 - position * digitH}px)`;
       for (let index = 0; index < inner.children.length; index++) {
         const label = inner.children[index].lastElementChild;
-        // Clip the vivid layer to the part physically above the viewport's fixed centre.
-        const bottom = 100 - Math.max(0, Math.min(1, position + 0.5 - index)) * 100;
+        // Both reels cross the same fixed line below the centred digits, independent of carries.
+        const bottom = 100 - Math.max(0, Math.min(1, position + 0.5 + restColorOffset - index)) * 100;
         const clip = `inset(0 0 ${bottom.toFixed(4)}% 0)`;
         if (label._restClip !== clip) {
           label.style.clipPath = clip; label.style.webkitClipPath = clip; label._restClip = clip;
