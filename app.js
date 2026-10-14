@@ -1,13 +1,14 @@
-/* Pompki vGPT_1.0.9 */
+/* Pompki vGPT_1.0.10 */
 (function () {
   'use strict';
-  const VERSION = 'vGPT_1.0.9', C = window.PompkiCore, Sync = window.PompkiSync;
+  const VERSION = 'vGPT_1.0.10', C = window.PompkiCore, Sync = window.PompkiSync;
   const $ = id => document.getElementById(id), KEY = 'pompki.state.v1';
   let data = { active: null, lastResult: null, queue: [], statuses: {} };
   let timer = null, audio = null, wakeLock = null, busy = false, storageRetry = null, updates = null;
   let lastRender = '', syncing = false, retryTimer = null, audioPromise = Promise.resolve();
   const alarmSources = new Set();
   let processing = false, syncAttempt = null, syncError = null, tapePosition = null;
+  let restFrame = null;
   let roundSound = null, roundSoundLoad = null;
   const reelStates = {}, ROUND_SOUND_URLS = ['./audio/runda_x.wav', './audio/runda_x-end.wav'];
   const messages = {
@@ -123,75 +124,74 @@
     $('queue-status').textContent = count ? `Niewysłane treningi: ${count}. Dane pozostają na tym urządzeniu do potwierdzenia zapisu.` : 'Brak niewysłanych treningów.';
     if (data.lastResult) $('result-status').textContent = syncError?.id === data.lastResult.id ? syncError.message : statusText(data.lastResult.id);
   }
-  function renderRest(seconds, immediate = false) {
-    $('rest-value').textContent = seconds;
-    const timing = C.rest(data.active, Date.now()), intro = C.restIntro;
+  function renderRest() {
+    const now = Date.now(), timing = C.rest(data.active, now), intro = C.restIntro;
+    const seconds = timing.seconds;
+    if ($('rest-value').textContent !== String(seconds)) $('rest-value').textContent = seconds;
     const entryEnd = intro.blackMs + intro.entryMs, ascentStart = entryEnd + intro.previewMs;
     const stage = !timing.intro ? 'count' : timing.introElapsed < intro.blackMs ? 'black' : timing.introElapsed < entryEnd ? 'entry' : timing.introElapsed < ascentStart ? 'preview' : 'ascent';
     $('workout').classList.toggle('rest-intro', timing.intro);
     $('workout').classList.toggle('rest-intro-black', stage === 'black');
     $('workout').classList.toggle('rest-first-digit', data.active.restCountStartedAt != null && seconds === 1);
+    $('workout').classList.toggle('rest-last-digit', !timing.intro && seconds === 60);
     const roller = $('rest-roller');
     const h = roller.clientHeight, w = roller.clientWidth;
     if (!h || !w) return;
     const key = `${data.active.id}:${data.active.sets.length}`, digitH = Math.round(Math.min(h * 0.6, w * 0.9));
     const resized = !tapePosition || tapePosition.h !== h || tapePosition.w !== w;
     if (resized) roller.style.fontSize = `${Math.floor(Math.min(digitH * 0.95, w * 0.64))}px`;
-    if (!timing.intro && !immediate && !resized && tapePosition.key === key && tapePosition.seconds === seconds && tapePosition.stage === stage) return;
-    const snap = immediate || resized || tapePosition.key !== key || (!timing.intro && !tapePosition.intro && seconds !== tapePosition.seconds + 1) || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const elapsed = Math.max(0, now - timing.countStartedAt) / 1000;
+    const fraction = reduced ? 0 : elapsed - Math.floor(elapsed);
     function positionReel(id, value) {
       const inner = $(id), previous = reelStates[id], ones = id === 'rest-ones-tape';
-      // Reserve both columns. During 1-8 the blank tens row holds its future 1 below the viewport;
-      // at 9 it slides into the lower preview, then reaches the centre naturally at 10.
-      let position = ones ? value + 1 : seconds < 9 ? -1 : value, from = position, transition = 'transform 0.6s ease';
+      // Both axes stay reserved. The first tens 1 previews at 9; later tens only move on carries.
+      let position = ones ? value + 1 + fraction : seconds < 8 ? -1 : seconds === 8 ? -1 + fraction : value + (seconds % 10 === 9 ? fraction : 0);
       if (ones && timing.intro) {
-        if (stage === 'black') position = from = 0;
-        else if (stage === 'entry') {
-          from = (timing.introElapsed - intro.blackMs) / intro.entryMs; position = 1;
-          transition = `transform ${(entryEnd - timing.introElapsed) / 1000}s linear`;
-        } else if (stage === 'preview') position = from = 1;
-        else {
-          from = 1 + (timing.introElapsed - ascentStart) / intro.ascentMs; position = 2;
-          transition = `transform ${(C.exercise.restIntroMs - timing.introElapsed) / 1000}s linear`;
-        }
-        if (snap) position = from;
+        if (stage === 'black') position = 0;
+        else if (stage === 'entry') position = (timing.introElapsed - intro.blackMs) / intro.entryMs;
+        else if (stage === 'preview') position = 1;
+        else position = 1 + (timing.introElapsed - ascentStart) / intro.ascentMs;
       }
-      if (!snap && previous?.value === value && previous.position === position) return;
-      inner.ontransitionend = null;
-      const transform = position => `translateY(${h / 2 - digitH / 2 - position * digitH}px)`;
+      if (!resized && previous?.key === key && previous.position === position) return;
       if (!inner.childElementCount) {
         const rows = document.createDocumentFragment(), ones = id === 'rest-ones-tape', last = ones ? 12 : 6;
         for (let digit = 0; digit <= last; digit++) {
           const row = document.createElement('div'); row.className = 'rest-digit';
-          row.textContent = ones ? (digit + 9) % 10 : digit === 0 ? '' : digit; rows.append(row);
+          const text = ones ? (digit + 9) % 10 : digit === 0 ? '' : digit;
+          for (const name of ['base', 'elapsed']) {
+            const label = document.createElement('span'); label.className = `rest-digit-label rest-digit-${name}`;
+            label.textContent = text; row.append(label);
+          }
+          rows.append(row);
         }
         inner.append(rows);
       }
       if (resized) for (const row of inner.children) row.style.height = `${digitH}px`;
-      if (ones && timing.intro && !snap && from !== position) {
-        inner.style.transition = 'none'; inner.style.transform = transform(from); inner.getBoundingClientRect();
+      // Cyclic padding makes the 9 -> 0 wrap identical on either side, without an animation reset.
+      inner.style.transform = `translateY(${h / 2 - digitH / 2 - position * digitH}px)`;
+      for (let index = 0; index < inner.children.length; index++) {
+        const label = inner.children[index].lastElementChild;
+        // Clip the vivid layer to the part physically above the viewport's fixed centre.
+        const bottom = 100 - Math.max(0, Math.min(1, position + 0.5 - index)) * 100;
+        const clip = `inset(0 0 ${bottom.toFixed(4)}% 0)`;
+        if (label._restClip !== clip) {
+          label.style.clipPath = clip; label.style.webkitClipPath = clip; label._restClip = clip;
+        }
       }
-      // A repeated zero lets 9 -> 0 move upward; reset to the first zero without visible motion.
-      if (!snap && previous?.position === 11) {
-        inner.style.transition = 'none'; inner.style.transform = transform(1); inner.getBoundingClientRect();
-      }
-      const wrap = !snap && previous?.value === 9 && value === 0;
-      const current = { value, position: wrap ? 11 : position }; reelStates[id] = current;
-      inner.style.transition = snap ? 'none' : transition;
-      inner.style.transform = transform(current.position);
-      if (snap) inner.getBoundingClientRect();
-      if (wrap) inner.ontransitionend = event => {
-        if (event.propertyName !== 'transform' || reelStates[id] !== current) return;
-        inner.style.transition = 'none'; inner.style.transform = transform(1); inner.getBoundingClientRect();
-        current.position = 1; inner.ontransitionend = null;
-      };
+      reelStates[id] = { key, position };
     }
     // Deadlines, not animation events, determine the digits; resume/resize snaps directly to now.
     positionReel('rest-tens-tape', Math.floor(seconds / 10));
     positionReel('rest-ones-tape', seconds % 10);
     tapePosition = { key, seconds, h, w, intro: timing.intro, stage };
+    if (restFrame === null && document.visibilityState === 'visible') restFrame = requestAnimationFrame(() => {
+      restFrame = null;
+      if (document.visibilityState === 'visible' && data.active?.phase === 'rest') tick();
+    });
   }
   function render() {
+    if (restFrame !== null) { cancelAnimationFrame(restFrame); restFrame = null; }
     if (processing) { show('processing'); return; }
     const state = data.active;
     if (!state) { show('home'); lastRender = ''; updateStatuses(); return; }
@@ -205,13 +205,13 @@
     if (state.phase === 'black') { show('black'); return; }
     show('workout'); $('counter').textContent = C.counter(state);
     const resting = state.phase === 'rest'; $('choices').hidden = resting; $('rest').hidden = !resting;
-    if (!resting) $('workout').classList.remove('rest-intro', 'rest-intro-black', 'rest-first-digit');
-    if (resting) renderRest(C.rest(state, Date.now()).seconds, true);
+    if (!resting) $('workout').classList.remove('rest-intro', 'rest-intro-black', 'rest-first-digit', 'rest-last-digit');
+    if (resting) renderRest();
   }
-  function tick(immediate = false) {
+  function tick() {
     if (data.active?.phase !== 'rest') return;
     const r = C.rest(data.active, Date.now());
-    if (!r.expired) { renderRest(r.seconds, immediate); return; }
+    if (!r.expired) { renderRest(); return; }
     // The black state is committed before audio. Reloading never plays a second alarm.
     if (saveActive({ ...data.active, phase: 'black' })) {
       render(); roundAlarm(data.active.sets.length + 1);
@@ -307,8 +307,8 @@
   $('resume-workout').addEventListener('click', () => { audioPromise = unlockAudio(); $('recovery-dialog').close(); render(); requestWakeLock(); tick(true); });
   $('discard-workout').addEventListener('click', () => { if (saveActive(null)) { $('recovery-dialog').close(); render(); activateUpdate(); } });
   $('recovery-dialog').addEventListener('cancel', event => event.preventDefault());
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { requestWakeLock(); tick(true); syncQueue(); } });
-  window.addEventListener('resize', () => { if (data.active?.phase === 'rest') renderRest(C.rest(data.active, Date.now()).seconds, true); });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { requestWakeLock(); tick(); syncQueue(); } });
+  window.addEventListener('resize', () => { if (data.active?.phase === 'rest') renderRest(); });
   window.addEventListener('online', syncQueue);
   window.addEventListener('online', prepareRoundSound);
   window.addEventListener('pagehide', releaseWakeLock);

@@ -1,9 +1,9 @@
-/* Pompki vGPT_1.0.9 — never cache integration requests. */
+/* Pompki vGPT_1.0.10 — never cache integration requests. */
 'use strict';
-const VERSION = 'vGPT_1.0.9';
+const VERSION = 'vGPT_1.0.10';
 const CACHE = `pompki-${VERSION}`;
 const AUDIO_FILES = ['./audio/runda_x.wav', './audio/runda_x-end.wav'];
-const FILES = ['./', './index.html', './install.html', './styles.css?v=vGPT_1.0.9', './core.js?v=vGPT_1.0.9', './app.js?v=vGPT_1.0.9', './sync.js?v=vGPT_1.0.9', './updates.js?v=vGPT_1.0.9', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', './icons/maskable-512.png', './icons/apple-touch-icon.png', './obrazki/pompki.png', ...[100,110,120,130,140,150].map(n => `./obrazki/${n}_pompek.png`)];
+const FILES = ['./', './index.html', './install.html', './styles.css?v=vGPT_1.0.10', './core.js?v=vGPT_1.0.10', './app.js?v=vGPT_1.0.10', './sync.js?v=vGPT_1.0.10', './updates.js?v=vGPT_1.0.10', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', './icons/maskable-512.png', './icons/apple-touch-icon.png', './obrazki/pompki.png', ...[100,110,120,130,140,150].map(n => `./obrazki/${n}_pompek.png`)];
 // Activate only after the complete new offline bundle is available. This also
 // releases updates held by older clients; the current page decides when to reload.
 self.addEventListener('install', event => event.waitUntil(caches.open(CACHE).then(async cache => {
