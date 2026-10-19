@@ -1,4 +1,4 @@
-/* Pompki vGPT_1.0.11 — pure workout rules, shared by UI and tests. */
+/* Pompki vGPT_1.1.0 — pure workout rules, shared by UI and tests. */
 (function (root) {
   'use strict';
   const restIntro = Object.freeze({ blackMs: 200, entryMs: 600, previewMs: 1000, ascentMs: 600 });

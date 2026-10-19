@@ -1,13 +1,14 @@
-/* Pompki vGPT_1.0.11 */
+/* Pompki vGPT_1.1.0 */
 (function () {
   'use strict';
-  const VERSION = 'vGPT_1.0.11', C = window.PompkiCore, Sync = window.PompkiSync;
+  const VERSION = 'vGPT_1.1.0', C = window.PompkiCore, Sync = window.PompkiSync;
   const $ = id => document.getElementById(id), KEY = 'pompki.state.v1';
   let data = { active: null, lastResult: null, queue: [], statuses: {} };
   let timer = null, audio = null, wakeLock = null, busy = false, storageRetry = null, updates = null;
   let lastRender = '', syncing = false, retryTimer = null, audioPromise = Promise.resolve();
   const alarmSources = new Set();
   let processing = false, syncAttempt = null, syncError = null, tapePosition = null;
+  let authLoading = typeof Sync.restore === 'function', authBusy = false, authNotice = '';
   let restFrame = null, restColorOffset = 0;
   let roundSound = null, roundSoundLoad = null;
   const reelStates = {}, ROUND_SOUND_URLS = ['./audio/runda_x.wav', './audio/runda_x-end.wav'];
@@ -119,10 +120,24 @@
   }
   function statusText(id) { return messages[data.statuses[id]] || messages.pending; }
   function updateStatuses() {
+    $('sync-activity').hidden = !syncing;
+    document.body.classList.toggle('sync-active', syncing);
+    $('sync-now').disabled = syncing || busy;
+    $('new-workout').disabled = busy;
     const count = data.queue.length;
     $('home-status').textContent = count ? `${count} ${count === 1 ? 'wynik oczekuje' : 'wyniki oczekują'} na synchronizację` : '';
     $('queue-status').textContent = count ? `Niewysłane treningi: ${count}. Dane pozostają na tym urządzeniu do potwierdzenia zapisu.` : 'Brak niewysłanych treningów.';
     if (data.lastResult) $('result-status').textContent = syncError?.id === data.lastResult.id ? syncError.message : statusText(data.lastResult.id);
+  }
+  function updateAuthControls() {
+    const configured = Sync.isConfigured(), saved = Sync.isRemembered?.() || false;
+    $('connect-sync').disabled = $('remember-key').disabled = authLoading || authBusy;
+    $('forget-key').hidden = !(Sync.hasStoredCredential?.() || saved);
+    $('forget-key').disabled = authLoading || authBusy;
+    $('sync-key').required = !configured || $('endpoint').value.trim() !== Sync.endpoint();
+    $('sync-key').placeholder = configured ? 'Klucz jest gotowy — wpisz tylko, aby go zmienić' : 'Wpisz klucz synchronizacji';
+    $('auth-status').textContent = authLoading ? 'Odczytywanie ustawień…' : authBusy ? 'Zapisywanie ustawień…' : authNotice ||
+      (saved ? 'Klucz zapamiętany na tym urządzeniu. Nie musisz wpisywać go ponownie.' : configured ? 'Klucz aktywny tylko w tej sesji.' : 'Wpisz klucz, aby włączyć synchronizację.');
   }
   function renderRest() {
     const now = Date.now(), timing = C.rest(data.active, now), intro = C.restIntro;
@@ -262,6 +277,7 @@
       const completed = { ...data, active: workout, lastResult: workout, queue: [...data.queue.filter(w => w.id !== workout.id), workout], statuses: { ...data.statuses, [workout.id]: 'pending' } };
       if (!persist(completed, () => completeWorkout(workout))) return;
       releaseWakeLock();
+      processing = false; render();
       await syncQueue();
     } finally {
       processing = false; busy = false; render(); activateUpdate();
@@ -272,6 +288,7 @@
     if (!navigator.onLine || !Sync.isConfigured() || !data.queue.length || activeWorkout()) { updateStatuses(); return Promise.resolve(); }
     syncing = true; clearTimeout(retryTimer);
     syncError = null;
+    updateStatuses();
     syncAttempt = sendQueuedWorkouts();
     return syncAttempt;
   }
@@ -291,6 +308,7 @@
       updateStatuses();
     } finally {
       syncing = false;
+      updateStatuses();
       activateUpdate();
       if (data.queue.length && navigator.onLine && Sync.isConfigured()) retryTimer = setTimeout(syncQueue, 60000);
     }
@@ -302,15 +320,31 @@
     if (data.active?.phase !== 'black' || busy) return;
     audioPromise = unlockAudio(); if (saveActive({ ...data.active, phase: 'ready' })) { render(); requestWakeLock(); }
   });
-  $('new-workout').addEventListener('click', () => { if (saveActive(null)) { render(); activateUpdate(); } });
+  $('new-workout').addEventListener('click', () => { if (!busy && saveActive(null)) { render(); activateUpdate(); } });
   $('sync-now').addEventListener('click', () => { if (Sync.isConfigured()) syncQueue(); else $('settings').click(); });
-  $('settings').addEventListener('click', () => { $('endpoint').value = Sync.endpoint(); $('sync-key').value = ''; updateStatuses(); $('settings-dialog').showModal(); });
+  $('settings').addEventListener('click', () => {
+    $('endpoint').value = Sync.endpoint(); $('sync-key').value = ''; $('remember-key').checked = Sync.isRemembered?.() || false;
+    updateStatuses(); updateAuthControls(); $('settings-dialog').showModal();
+  });
+  $('endpoint').addEventListener('input', updateAuthControls);
   $('close-settings').addEventListener('click', () => { $('sync-key').value = ''; $('settings-dialog').close(); });
   $('settings-dialog').addEventListener('close', () => { $('sync-key').value = ''; activateUpdate(); });
   $('settings-form').addEventListener('submit', async event => {
     event.preventDefault();
-    try { await Sync.configure($('endpoint').value.trim(), $('sync-key').value); $('sync-key').value = ''; $('settings-dialog').close(); syncQueue(); }
-    catch (error) { $('queue-status').textContent = error.message; }
+    if (authLoading || authBusy) return;
+    authBusy = true; authNotice = ''; updateAuthControls();
+    try {
+      await Sync.configure($('endpoint').value.trim(), $('sync-key').value, $('remember-key').checked);
+      $('sync-key').value = ''; $('settings-dialog').close(); syncQueue();
+    } catch (error) { authNotice = error.message; }
+    finally { authBusy = false; updateAuthControls(); activateUpdate(); }
+  });
+  $('forget-key').addEventListener('click', async () => {
+    if (authLoading || authBusy) return;
+    authBusy = true; authNotice = ''; clearTimeout(retryTimer); $('sync-key').value = ''; updateAuthControls();
+    try { await Sync.forget(); $('remember-key').checked = false; authNotice = 'Zapamiętany klucz został usunięty. Adres i wyniki pozostają zapisane.'; }
+    catch (error) { authNotice = error.message; }
+    finally { authBusy = false; updateAuthControls(); updateStatuses(); activateUpdate(); }
   });
   $('storage-retry').addEventListener('click', () => { if (storageRetry) storageRetry(); });
   $('storage-dialog').addEventListener('cancel', event => event.preventDefault());
@@ -338,10 +372,18 @@
   if (activeWorkout()) $('recovery-dialog').showModal();
   updates = window.PompkiUpdates.start({
     // A reload must not interrupt a set, alarm audio, a storage retry, an in-flight request,
-    // or an unsent queue that still needs the session-only synchronization key.
-    canReload: () => !activeWorkout() && !busy && !syncing && !alarmSources.size &&
+    // or authorization restoration/settings changes and an unsent authorized queue.
+    canReload: () => !activeWorkout() && !busy && !syncing && !authLoading && !authBusy && !alarmSources.size &&
       !['settings-dialog', 'storage-dialog', 'recovery-dialog'].some(id => $(id).open) &&
       !(data.queue.length && Sync.isConfigured()),
     onError: () => { if (!activeWorkout()) $('home-status').textContent = 'Tryb offline będzie dostępny po poprawnym załadowaniu aplikacji online.'; }
   });
+  updateAuthControls();
+  if (authLoading) {
+    Sync.restore().then(result => {
+      authNotice = result?.error || ''; $('remember-key').checked = Sync.isRemembered();
+    }).catch(() => { authNotice = 'Nie udało się odczytać klucza. Otwórz ustawienia synchronizacji.'; }).finally(() => {
+      authLoading = false; updateAuthControls(); updateStatuses(); syncQueue(); activateUpdate();
+    });
+  }
 })();

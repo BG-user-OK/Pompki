@@ -10,17 +10,17 @@
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icons/icon-192.png">
   <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
-  <link rel="stylesheet" href="./styles.css?v=vGPT_1.0.11">
-  <script defer src="./core.js?v=vGPT_1.0.11"></script>
-  <script defer src="./sync.js?v=vGPT_1.0.11"></script>
-  <script defer src="./updates.js?v=vGPT_1.0.11"></script>
-  <script defer src="./app.js?v=vGPT_1.0.11"></script>
+  <link rel="stylesheet" href="./styles.css?v=vGPT_1.1.0">
+  <script defer src="./core.js?v=vGPT_1.1.0"></script>
+  <script defer src="./sync.js?v=vGPT_1.1.0"></script>
+  <script defer src="./updates.js?v=vGPT_1.1.0"></script>
+  <script defer src="./app.js?v=vGPT_1.1.0"></script>
 </head>
 <body>
   <main id="screen">
     <section id="home" class="screen">
       <button id="start" class="start-button" aria-label="Rozpocznij trening pompek"><img src="./obrazki/pompki.png" alt="Pompki" draggable="false"></button>
-      <div class="home-tools"><button id="settings" class="quiet-button" aria-label="Ustawienia synchronizacji">⚙</button><span id="version">vGPT_1.0.11</span></div>
+      <div class="home-tools"><button id="settings" class="quiet-button" aria-label="Ustawienia synchronizacji">⚙</button><span id="version">vGPT_1.1.0</span></div>
       <p id="home-status" class="status" role="status"></p>
     </section>
     <section id="workout" class="screen" hidden aria-label="Trening pompek">
@@ -50,14 +50,20 @@
       <div class="result-actions"><button id="sync-now" class="text-button">Synchronizuj</button><button id="new-workout" class="text-button">Nowy trening</button></div>
     </section>
   </main>
+  <aside id="sync-activity" class="sync-activity" hidden role="status" aria-live="polite" aria-label="Synchronizacja w toku">
+    <div class="sync-spinner" aria-hidden="true"></div><span>Synchronizacja…</span>
+  </aside>
   <dialog id="settings-dialog">
     <form id="settings-form">
       <h1>Synchronizacja</h1>
       <label>Adres wdrożenia Apps Script<input id="endpoint" type="url" placeholder="https://script.google.com/…/exec" autocomplete="off" required></label>
       <label>Klucz synchronizacji<input id="sync-key" type="password" autocomplete="off" minlength="32" required></label>
-      <p>Klucz służy tylko do tej synchronizacji. Nie wpisuj hasła Google. Klucz pozostaje w pamięci tej sesji i nie trafia do kodu aplikacji. Po ponownym otwarciu może być potrzebny ponownie.</p>
+      <label class="remember-key"><input id="remember-key" type="checkbox">Zapamiętaj na tym urządzeniu</label>
+      <p>Nie wpisuj hasła Google. Zaznaczenie tej opcji pozwala synchronizować po ponownym otwarciu aplikacji. Używaj jej na zaufanym urządzeniu. Klucz nie trafia do kodu aplikacji.</p>
+      <p id="auth-status" class="status" role="status"></p>
+      <button id="forget-key" class="text-button" type="button" hidden>Usuń zapamiętany klucz</button>
       <p id="queue-status" class="status"></p>
-      <div class="dialog-actions"><button type="button" id="close-settings">Zamknij</button><button type="submit">Połącz</button></div>
+      <div class="dialog-actions"><button type="button" id="close-settings">Zamknij</button><button id="connect-sync" type="submit">Połącz</button></div>
     </form>
   </dialog>
   <dialog id="recovery-dialog">

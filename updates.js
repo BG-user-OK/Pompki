@@ -1,4 +1,4 @@
-/* Pompki vGPT_1.0.11 — update checks and safe page refresh. */
+/* Pompki vGPT_1.1.0 — update checks and safe page refresh. */
 (function (root) {
   'use strict';
   function start({ canReload, onError = () => {} }, env = root) {
